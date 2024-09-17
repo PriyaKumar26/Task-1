@@ -1,156 +1,133 @@
+pip install PyPDF2
+
+
+import PyPDF2
+import csv
 import requests
-from bs4 import BeautifulSoup
-import sqlite3
-from datetime import datetime
+from io import BytesIO
 
-# Define constants
-BASE_URL = "https://indianexpress.com/"
-BUSINESS_PATH = "/business/"
-DB_NAME = "articles.db"
+# URL of the PDF
+pdf_url = "https://visionias.in/resources/material/?id=1021&type=ca"
 
-# Initialize SQLite database
-def init_db():
-    conn = sqlite3.connect(DB_NAME)
-    cursor = conn.cursor()
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS articles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT NOT NULL,
-            author TEXT,
-            publication_date TEXT,
-            content TEXT NOT NULL
-        )
-    ''')
-    conn.commit()
-    return conn
+def download_pdf(url):
+    try:
+        response = requests.get(url)
+        response.raise_for_status()  # Check for request errors
+        return BytesIO(response.content)
+    except requests.RequestException as e:
+        print(f"Error downloading PDF: {e}")
+        return None
 
-# Fetch HTML content of a URL
-def fetch_url(url):
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.text
+def extract_text_from_pdf(pdf_file):
+    text = ""
+    try:
+        reader = PyPDF2.PdfFileReader(pdf_file)
+        for page_num in range(reader.numPages):
+            page = reader.getPage(page_num)
+            text += page.extract_text() + "\n"
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+    return text
 
-# Extract article links from the homepage
-def extract_article_links(homepage_html):
-    soup = BeautifulSoup(homepage_html, 'html.parser')
-    article_links = []
-    
-    for a_tag in soup.find_all('a', href=True):
-        href = a_tag['href']
-        if BUSINESS_PATH in href:
-            # Ensure we have the full URL
-            if not href.startswith('http'):
-                href = BASE_URL + href
-            article_links.append(href)
-    
-    return list(set(article_links))  # Remove duplicates
+def process_text_to_articles(text):
+    # This function needs to be customized based on the structure of your PDF
+    # Here, we'll just create dummy data to illustrate the process
+    articles = []
+    lines = text.split("\n")
+    s_no = 1.1
+    for line in lines:
+        if line.strip():  # Skip empty lines
+            title = "Sample Title"  # Placeholder, extract the real title from line
+            body = line  # Placeholder, extract the real body from line
+            articles.append((s_no, title, body))
+            s_no += 0.1  # Increment serial number for demonstration
+    return articles
 
-# Extract article details
-def extract_article_details(article_html):
-    soup = BeautifulSoup(article_html, 'html.parser')
-    
-    # Title
-    title_tag = soup.find('h1', class_='article-title')
-    title = title_tag.get_text(strip=True) if title_tag else 'No Title'
-    
-    # Author
-    author_tag = soup.find('span', class_='author')
-    author = author_tag.get_text(strip=True) if author_tag else 'No Author'
-    
-    # Publication date
-    date_tag = soup.find('time', class_='article-date')
-    publication_date = date_tag.get_text(strip=True) if date_tag else 'No Date'
-    
-    # Content
-    content_tag = soup.find('div', class_='article-content')
-    content = content_tag.get_text(strip=True) if content_tag else 'No Content'
-    
-    return {
-        'title': title,
-        'author': author,
-        'publication_date': publication_date,
-        'content': content
-    }
-
-# Save article details to the database
-def save_article_to_db(conn, article_details):
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO articles (title, author, publication_date, content)
-        VALUES (?, ?, ?, ?)
-    ''', (article_details['title'], article_details['author'], article_details['publication_date'], article_details['content']))
-    conn.commit()
+def write_articles_to_csv(articles, filename):
+    try:
+        with open(filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(['s_no', 'article_title', 'article_body'])
+            for article in articles:
+                writer.writerow(article)
+    except IOError as e:
+        print(f"Error writing to CSV: {e}")
 
 def main():
-    conn = init_db()
-    
-    # Fetch homepage
-    homepage_html = fetch_url(BASE_URL)
-    
-    # Extract article links
-    article_links = extract_article_links(homepage_html)
-    
-    for link in article_links:
-        print(f"Processing: {link}")
-        try:
-            # Fetch article page
-            article_html = fetch_url(link)
-            
-            # Extract details
-            article_details = extract_article_details(article_html)
-            
-            # Save to database
-            save_article_to_db(conn, article_details)
-        
-        except Exception as e:
-            print(f"Failed to process {link}: {e}")
-    
-    conn.close()
-    print("Scraping completed!")
+    pdf_file = download_pdf(pdf_url)
+    if pdf_file:
+        text = extract_text_from_pdf(pdf_file)
+        articles = process_text_to_articles(text)
+        write_articles_to_csv(articles, 'articles.csv')
+        print("CSV file created successfully.")
 
 if __name__ == "__main__":
     main()
 
 
-    import sqlite3
+pip install pdfminer.six
 
-# Function to initialize the SQLite database and create the schema
-def create_database_schema(db_name):
-    """
-    Creates a SQLite database with the specified schema.
-    
-    Args:
-    db_name (str): The name of the SQLite database file.
-    """
+import csv
+import requests
+from io import BytesIO
+from pdfminer.high_level import extract_text
+from pdfminer.pdfparser import PDFSyntaxError
+
+# URL of the PDF
+pdf_url = "https://visionias.in/resources/material/?id=10"
+
+def download_pdf(url):
     try:
-        # Connect to the SQLite database (or create it if it doesn't exist)
-        conn = sqlite3.connect(db_name)
-        cursor = conn.cursor()
-        
-        # Create the articles table if it doesn't already exist
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS articles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                author TEXT,
-                publication_date TEXT,
-                content TEXT NOT NULL
-            )
-        ''')
-        
-        # Commit the changes and close the connection
-        conn.commit()
-        print(f"Database schema created successfully in '{db_name}'.")
-        
-    except sqlite3.Error as e:
-        print(f"An error occurred while creating the database schema: {e}")
-    
-    finally:
-        if conn:
-            conn.close()
+        response = requests.get(url)
+        response.raise_for_status()  # Check for request errors
+        return BytesIO(response.content)
+    except requests.RequestException as e:
+        print(f"Error downloading PDF: {e}")
+        return None
 
-# Usage example
+def extract_text_from_pdf(pdf_file):
+    try:
+        # Extract text using pdfminer
+        text = extract_text(pdf_file)
+        return text
+    except PDFSyntaxError as e:
+        print(f"PDF syntax error: {e}")
+        return ""
+    except Exception as e:
+        print(f"Error extracting text from PDF: {e}")
+        return ""
+
+def process_text_to_articles(text):
+    # This function needs to be customized based on the structure of your PDF
+    # Here, we'll create dummy data to illustrate the process
+    articles = []
+    lines = text.split('\n')
+    s_no = 1.1
+    for line in lines:
+        if line.strip():  # Skip empty lines
+            title = "Sample Title"  # Placeholder, extract the real title from line
+            body = line  # Placeholder, extract the real body from line
+            articles.append((s_no, title, body))
+            s_no += 0.1  # Increment serial number for demonstration
+    return articles
+
+def write_articles_to_csv(articles, filename):
+    try:
+        with open(filename, mode='w', newline='', encoding='utf-8') as file:
+            writer = csv.writer(file, quoting=csv.QUOTE_MINIMAL)
+            writer.writerow(['s_no', 'article_title', 'article_body'])
+            for article in articles:
+                writer.writerow(article)
+    except IOError as e:
+        print(f"Error writing to CSV: {e}")
+
+def main():
+    pdf_file = download_pdf(pdf_url)
+    if pdf_file:
+        text = extract_text_from_pdf(pdf_file)
+        articles = process_text_to_articles(text)
+        write_articles_to_csv(articles, 'articles.csv')
+        print("CSV file created successfully.")
+
 if __name__ == "__main__":
-    create_database_schema("articles.db")
-
-    
+    main()
